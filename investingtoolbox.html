@@ -1,0 +1,391 @@
+<html>
+  <head>
+    <!--Load the AJAX API-->
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <script type="text/javascript">
+
+      // Load the Visualization API and the controls package.
+      google.charts.load('current', {'packages':['corechart', 'controls', 'table']});
+
+      // Set a callback to run when the Google Visualization API is loaded.
+      google.charts.setOnLoadCallback(drawDashboard);
+
+
+      //---------- GLOBALS ----------- //
+      var cols;
+      var colMap = {};
+
+      //---------- Calculated Fields //
+      function calcGrowthBookValue(dataTable, rowNum){
+
+        var growth = 0;
+        if (rowNum==0 || dataTable.getValue(rowNum, colMap['Company Name']) != dataTable.getValue(rowNum-1, colMap['Company Name'])){
+          growth = null;
+        }
+        else {
+           growth = Math.round((dataTable.getValue(rowNum, colMap['Book Value']) - dataTable.getValue(rowNum-1, colMap['Book Value'])) * 100/ dataTable.getValue(rowNum-1, colMap['Book Value']));
+        }
+        return {v: growth, f: growth + '%'}
+
+      }
+
+      function calcGrowthRevenue(dataTable, rowNum){
+        var growth = 0;
+        if (rowNum==0 || dataTable.getValue(rowNum, colMap['Company Name']) != dataTable.getValue(rowNum-1, colMap['Company Name'])){
+          growth = null;
+        }
+        else {
+          growth = Math.round((dataTable.getValue(rowNum,colMap['Revenue']) - dataTable.getValue(rowNum-1, colMap['Revenue'])) * 100/ dataTable.getValue(rowNum-1, colMap['Revenue']));
+        }
+        return {v: growth, f: growth + '%'}
+
+      }
+
+      function calcGrowthOpCashFlow(dataTable, rowNum){
+        var growth = 0;
+        if (rowNum==0 || dataTable.getValue(rowNum, colMap['Company Name']) != dataTable.getValue(rowNum-1, colMap['Company Name'])){
+          growth = null;
+        }
+        else {
+           growth = Math.round((dataTable.getValue(rowNum, colMap['Operating Cash Flow']) - dataTable.getValue(rowNum-1, colMap['Operating Cash Flow'])) * 100/ dataTable.getValue(rowNum-1, colMap['Operating Cash Flow']));
+        }
+        return {v: growth, f: growth + '%'}
+
+      }
+
+      function calcGrowthNetIncome(dataTable, rowNum){
+        var growth = 0;
+        if (rowNum==0 || dataTable.getValue(rowNum, colMap['Company Name']) != dataTable.getValue(rowNum-1, colMap['Company Name'])){
+          growth = null;
+        }
+        else {
+          growth = Math.round((dataTable.getValue(rowNum, colMap['Net Income']) - dataTable.getValue(rowNum-1, colMap['Net Income'])) * 100/ dataTable.getValue(rowNum-1, colMap['Net Income']));
+        }
+        return {v: growth, f: growth + '%'}
+
+      }
+      // Callback that creates and populates a data table,
+      // instantiates a dashboard, a range slider and a pie chart,
+      // passes in the data and draws it.
+      function drawDashboard() {
+        var query = new google.visualization.Query("https://docs.google.com/spreadsheets/d/1RuFf3IW_AzWtTWGwC620eQ-EIlk0qD6Avk1a89wnrx8/gviz/tq?gid=0&headers=1");
+
+        query.send(handleQueryResponse);
+      }
+
+      // make everything global???
+      var data;
+      var growthRateView;
+      var growthRateSummaryView;
+      var valuationView;
+      var valuationTable;
+      var windageGrowth;
+      var table;
+      var summaryDataView;
+      var companyFilter;
+
+      function updateWindage(){
+        // Show Company Name, year, FCF, FCF growth rate, net income growth rate, revenue growth rate,
+        // Margin of Safety=....
+        // the 3 valuation models
+        // 10-cap price, payback price, and margin of safety
+        // 10-cap = Owner's Earnings * 10
+        // 8-year payback: =FCF*((1+growth rate)*(1-(1+growth rate)^8)/(1-(1+growth rate)))
+        windageGrowth = parseInt(document.getElementById('growth_rate').value);
+        console.log('calling update:' + windageGrowth);
+        valuationView.setColumns([0, 1, 2, 3, 4, 8,12,13,
+                                 {
+                                   calc:function(dt,rownum){
+                                     return {v: windageGrowth/100, f: windageGrowth + '%'};
+                                   },
+                                   type: 'number',
+                                   label: 'Windage Growth Rate'
+                                 },
+                                 {
+                                   calc:function(dt,rownum){
+                                     var retval = dt.getValue(rownum, 12)/dt.getValue(rownum, 13);
+                                     return {v: retval, f: '$' + Math.round(retval*100)/100};
+                                   },
+                                   type: 'number',
+                                   label: 'EPS'
+                                 },
+                                 {
+                                   calc:function(dt, rownum){
+                                    var fcf = dt.getValue(rownum, 8);
+                                    var growth = windageGrowth/100;
+                                    var payback_eight_yrs = fcf *((1+growth)*(1-(1+growth)**8)/(1-(1+growth)));
+                                    var retval = Math.round(payback_eight_yrs/dt.getValue(rownum, 13));
+                                    return {v: retval, f: '$' + Math.round(retval*100)/100};
+                                   },
+                                   type: 'number',
+                                   label: '8-Year Payback Price/sh'
+                                 },
+                                 {
+                                   calc:function(dt, rownum){
+                                    var fcf = dt.getValue(rownum, 8);
+                                    var growth = windageGrowth/100;
+                                    var pe = 2 * windageGrowth;
+                                    var eps = dt.getValue(rownum, 12)/dt.getValue(rownum, 13);
+                                    var projected_eps_in_10yrs = eps*(1+growth)**10;
+                                    var projected_share_price_in_10yrs = projected_eps_in_10yrs*pe;
+                                    var discounted_15pct_price = projected_share_price_in_10yrs/4; // assume 15% discounted rate (minimum return)
+
+                                    var margin_of_safety_price = discounted_15pct_price/2;
+
+                                    return {v: margin_of_safety_price, f: '$' + Math.round(margin_of_safety_price*100)/100};
+                                    
+                                   },
+                                   type: 'number',
+                                   label: 'Margin of Safety Price'
+                                 }]);
+       var state = companyFilter.getState();
+       if (state.selectedValues && state.selectedValues.length) {
+           var city = state.selectedValues[0];
+           valuationView.setRows(growthRateView.getFilteredRows(
+             [
+               {column: 0, value:  state.selectedValues[0]},
+             ]));
+        }
+        valuationTable.draw(valuationView);
+      }
+
+      function handleQueryResponse(response) {
+        data = response.getDataTable();
+        cols = data.getNumberOfColumns();
+        for (var i=0; i<cols; i++){
+          colMap[data.getColumnLabel(i)] = i;
+        }
+        data.sort([{column: colMap['Company Name']}, {column: colMap['Fiscal Year']}]); // sort by company name and then year
+
+        growthRateView = new google.visualization.DataView(data);
+        growthRateView.setColumns( [colMap['Company Name'],
+                                    colMap['Fiscal Year'],
+                                   {calc:calcGrowthNetIncome, type:'number', label:'Net Income Growth'},
+                                   {calc:calcGrowthBookValue, type:'number', label:'Book Value Growth'},
+                                   {calc:calcGrowthRevenue, type:'number', label:'Revenue Growth'},
+                                   {calc:calcGrowthOpCashFlow, type:'number', label:'Operating Cash Flow Growth'},
+                                   {calc:function(dataTable, rowNum)
+                                     {
+                                       var roe;
+                                       if (dataTable.getValue(rowNum, colMap['Equity']) == 0){
+                                         return null;
+                                       }
+                                       roe = Math.round(dataTable.getValue(rowNum, colMap['Net Income']) * 100/dataTable.getValue(rowNum, colMap['Equity']));
+                                       //net income after tax divided by total equity
+                                       return {v: roe, f: roe + '%'};
+                                     },
+                                   type:'number', label:'ROE'},
+                                   {calc:function(dataTable, rowNum)
+                                     {
+                                       var roic;
+                                       if (dataTable.getValue(rowNum, colMap['Equity']) + dataTable.getValue(rowNum, colMap['Debt']) == 0){
+                                         return null;
+                                       }
+                                       roic = Math.round(dataTable.getValue(rowNum, colMap['Net Income']) * 100/(dataTable.getValue(rowNum, colMap['Equity']) + dataTable.getValue(rowNum, colMap['Debt'])));
+                                       return {v: roic, f: roic + '%'};
+                                       //net income after tax divided by equity plus debt
+                                     },
+                                   type:'number', label:'ROIC'},
+                                   {calc:function(dataTable, rowNum)
+                                     {
+                                       var fcf = Math.round(dataTable.getValue(rowNum, colMap['Operating Cash Flow'])-dataTable.getValue(rowNum, colMap['Capital Expenditures']));
+                                       return {v: fcf, f: '$' + fcf};
+
+                                     },
+                                   type:'number', label:'Free Cash Flow'},
+                                   {calc:function(dataTable, rowNum)
+                                     {
+                                       var fcf = Math.round(dataTable.getValue(rowNum, colMap['Operating Cash Flow'])-dataTable.getValue(rowNum, colMap['Capital Expenditures']));
+                                       return {v: fcf, f: '$' + fcf.toFixed(1).replace(/(\d)(?=(\d{3})+\.)/g, '$1,') + 'M free cash flow in ' + dataTable.getValue(rowNum, colMap['Fiscal Year'])};
+
+                                     },
+                                     type:'number', role: 'tooltip'
+                                   },
+                                   colMap['Debt'],
+                                   {calc:function(dataTable, rowNum)
+                                     {
+                                       var fcf = Math.round(dataTable.getValue(rowNum, colMap['Operating Cash Flow'])-dataTable.getValue(rowNum, colMap['Capital Expenditures']));
+                                       var debt = dataTable.getValue(rowNum, colMap['Debt']);
+                                       var debt_coverage;
+                                       if (debt != 0){
+                                         debt_coverage = Math.round(debt*10/fcf)/10;
+                                       }
+                                       return {v: debt_coverage, f: 'Debt = $' + debt + 'M' + '(' + debt_coverage + 'x Free Cash Flow)'};
+                                     },
+                                     type:'number', role: 'tooltip'
+                                   },
+                                   colMap['Net Income'],
+                                   colMap['Shares outstanding'],
+
+                                   // Owner's Earnings ... similar to FCF, but subtract average capex instead of full capex
+
+
+                                  ]);
+
+        // Calculate summarized compound annual growth rate (CAGR)
+        // CAGR = (end_val - begin_val) ^ 1/years - 1
+        growthRateSummaryView = new google.visualization.DataView(data);
+        growthRateSummaryView.setColumns(
+          [ colMap['Company Name'],
+            colMap['Fiscal Year'],
+            colMap['Net Income'],
+            colMap['Book Value'],
+            colMap['Revenue'],
+            colMap['Operating Cash Flow']
+          ]
+        );
+        var nRows = growthRateSummaryView.getNumberOfRows();
+        var nCols = growthRateSummaryView.getNumberOfColumns();
+        var summaryData = new google.visualization.DataTable();
+        summaryData.addColumn('string', 'Company Name');
+        summaryData.addColumn('string', 'Fiscal Year');
+
+        summaryData.addColumn('string', 'Metric');
+        summaryData.addColumn('number', 'Value');
+
+        var beginVals = {};
+        var endVals = {};
+        for (var r=0; r < nRows; r++){
+          for (var c=1; c < nCols; c++){
+            //console.log(r + ', ' + c);
+            if (r==0||
+                growthRateSummaryView.getValue(r, 0) != growthRateSummaryView.getValue(r-1, 0)){
+                  beginVals[growthRateSummaryView.getColumnLabel(c)] = growthRateSummaryView.getValue(r, c);
+            }
+            endVals[growthRateSummaryView.getColumnLabel(c)] = growthRateSummaryView.getValue(r, c);
+            nyears = endVals['Fiscal Year'] - beginVals['Fiscal Year'];
+            if (c>1) // Metric column
+            {
+              var cagr = Math.round(100 * ((endVals[growthRateSummaryView.getColumnLabel(c)] / beginVals[growthRateSummaryView.getColumnLabel(c)]) ** (1/nyears) - 1));
+              summaryData.addRow(
+                [
+                  growthRateSummaryView.getValue(r, 0),
+                  endVals['Fiscal Year'],
+                  'Compound Annual ' + growthRateSummaryView.getColumnLabel(c) + ' Growth',
+                  {v: cagr, f: cagr + '%'}]);
+            }
+          }
+        }
+
+        // Create a dashboard.
+        var dashboard = new google.visualization.Dashboard(
+            document.getElementById('dashboard_div'));
+
+        // Create a range slider, passing some options
+        companyFilter = new google.visualization.ControlWrapper({
+          'controlType': 'CategoryFilter',
+          'containerId': 'filter_div',
+          'options': {
+            'filterColumnLabel': 'Company Name',
+            'ui': {
+              'allowNone': false,
+              'allowMultiple': false,
+            }
+          }
+        });
+
+        // Create a line chart, passing some options
+        var lineChart = new google.visualization.ChartWrapper({
+          'chartType': 'LineChart',
+          'containerId': 'chart_div',
+          'options': {
+            'title': 'Moat: The Big Four Growth Rates',
+            'width': 600,
+            'height': 300,
+          },
+          'view': {'columns': [1,2,3,4,5]}
+        });
+
+        var mgmtLineChart = new google.visualization.ChartWrapper({
+          'chartType': 'LineChart',
+          'containerId': 'management_div',
+          'options': {
+            'title': 'Management Numbers: ROE and ROIC (10% or more)',
+            'width': 600,
+            'height': 300,
+          },
+          'view': {'columns': [1,6, 7]}
+        });
+
+        var cashDebtLineChart = new google.visualization.ChartWrapper({
+          'chartType': 'LineChart',
+          'containerId': 'cashDebt_div',
+          'options': {
+            'title': 'Management Numbers: Debt and Free Cash Flow (debt covered by 1-2 years of FCF)',
+            'width': 600,
+            'height': 300,
+          },
+          'view': {'columns': [1,8, 9,10, 11]}
+        });
+
+        // the 3 valuation models
+        valuationView = new google.visualization.DataView(growthRateView);
+        // Show Company Name, year, FCF, FCF growth rate, net income growth rate, revenue growth rate,
+        // Margin of Safety=....
+        valuationTable = new google.visualization.Table(document.getElementById('valuation_div'));
+        //updateWindage();
+
+
+        table = new google.visualization.Table(document.getElementById('chart_summary_div'));
+        //var mgmtTable = new google.visualization.Table(document.getElementById('management_div'));
+        summaryDataView = new google.visualization.DataView(summaryData);
+        google.visualization.events.addListener(companyFilter, 'ready', companyChangeListener);
+
+        // Update the summary table to show data for selected company and latest fiscal year
+        function companyChangeListener(){
+          var state = companyFilter.getState();
+          console.log('company change');
+          if (state.selectedValues.length) {
+              var city = state.selectedValues[0];
+              summaryDataView.setRows(summaryData.getFilteredRows(
+                [
+                  {column: 0, value:  state.selectedValues[0]},
+                ]));
+              // Filter for min and max Fiscal Year
+              var maxYear = summaryDataView.getColumnRange(1).max;
+              summaryDataView.setRows(summaryData.getFilteredRows(
+                [
+                  {column: 0, value:  state.selectedValues[0]},
+                  {column: 1, value: maxYear},
+                ]
+              ));
+              table.draw(summaryDataView);
+              updateWindage();
+  //            valuationTable.draw(valuationView);
+
+          }
+        }
+
+        // Establish dependencies, declaring that 'filter' drives 'lineChart',
+        // so that the pie chart will only display entries that are let through
+        // given the chosen slider range.
+        dashboard.bind(companyFilter, [lineChart, mgmtLineChart, cashDebtLineChart]);
+
+        // Draw the dashboard.
+        dashboard.draw(growthRateView);
+        google.visualization.events.addListener(companyFilter, 'statechange', companyChangeListener);
+
+
+      }
+    </script>
+  </head>
+
+  <body>
+    <!--Div that will hold the dashboard-->
+    <div id="dashboard_div">
+      <!--Divs that will hold each control and chart-->
+      <div id="filter_div"></div>
+      <div id="chart_div"></div>
+      <div id="chart_summary_div"></div>
+      <div id="management_div"></div>
+      <div id="cashDebt_div"></div>
+      <div id="input_growth_form">
+            <form id="form1" onsubmit="updateWindage(); return false" >
+             <label>Windage Growth Rate: <input type="text" value="5" id="growth_rate"/></label>
+             <button type="submit" value="Submit">Update</button>
+             </form>
+      </div>
+      <div id="valuation_div"></div>
+    </div>
+  </body>
+</html>
